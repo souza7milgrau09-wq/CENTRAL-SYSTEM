@@ -1,13 +1,148 @@
+
 require('dotenv').config();
-const {Client,GatewayIntentBits,Partials}=require('discord.js');
-const {commands,handle}=require('./commands');
-const {db,ensureUser}=require('./database');
-const {startDashboard}=require('./dashboard');
-for(const k of ['DISCORD_TOKEN','CLIENT_ID','SESSION_SECRET'])if(!process.env[k]){console.error(`Falta ${k} no .env`);process.exit(1);}
-const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMembers,GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent],partials:[Partials.Channel]});
-const spam=new Map(),joins=new Map();
-client.once('ready',()=>{console.log(`${client.user.tag} online.`);startDashboard(client);});
-client.on('interactionCreate',async i=>{try{await handle(client,i);}catch(e){console.error('Interaction:',e);const p={content:'Erro ao executar. Confira permissões e logs.',ephemeral:true};if(i.replied||i.deferred)await i.followUp(p).catch(()=>{});else await i.reply(p).catch(()=>{});}});
-client.on('guildMemberAdd',async m=>{const s=db.prepare('SELECT welcome_channel_id FROM guild_settings WHERE guild_id=?').get(m.guild.id);m.guild.channels.cache.get(s?.welcome_channel_id)?.send(`👋 Bem-vindo(a), ${m}! Você é o membro ${m.guild.memberCount}.`).catch(()=>{});const a=db.prepare('SELECT role_id FROM autoroles WHERE guild_id=?').get(m.guild.id);if(a?.role_id)await m.roles.add(a.role_id).catch(()=>{});const now=Date.now(),list=(joins.get(m.guild.id)||[]).filter(t=>now-t<15000);list.push(now);joins.set(m.guild.id,list);if(list.length>=8)console.warn(`[ANTI-RAID] Entrada acelerada detectada em ${m.guild.name}; revise manualmente a segurança.`);});
-client.on('messageCreate',m=>{if(!m.guild||m.author.bot)return;ensureUser.run(m.guild.id,m.author.id);const key=m.guild.id+':'+m.author.id,now=Date.now(),a=(spam.get(key)||[]).filter(t=>now-t<7000);a.push(now);spam.set(key,a);if(a.length>=6){const s=db.prepare('SELECT anti_spam FROM guild_settings WHERE guild_id=?').get(m.guild.id);if(s?.anti_spam!==0&&m.member?.moderatable){m.member.timeout(60000,'Anti-spam: excesso de mensagens').catch(()=>{});m.channel.send(`${m.author}, reduza a frequência de mensagens.`).catch(()=>{});}spam.set(key,[]);return;}const r=db.prepare('SELECT xp,level FROM users WHERE guild_id=? AND user_id=?').get(m.guild.id,m.author.id);const xp=r.xp+Math.floor(Math.random()*6)+5,level=Math.floor(Math.sqrt(xp/100));db.prepare('UPDATE users SET xp=?,level=? WHERE guild_id=? AND user_id=?').run(xp,level,m.guild.id,m.author.id);if(level>r.level)m.channel.send(`🎉 ${m.author}, você alcançou o nível ${level}!`).catch(()=>{});});
-client.login(process.env.DISCORD_TOKEN);
+
+const {
+    Client,
+    GatewayIntentBits,
+    Partials
+} = require('discord.js');
+
+const { commands, handle } = require('./commands');
+const { db, ensureUser } = require('./database');
+const { startDashboard } = require('./dashboard');
+
+for (const k of ['DISCORD_TOKEN', 'CLIENT_ID', 'SESSION_SECRET']) {
+    if (!process.env[k]) {
+        console.error(`Falta a variável ${k}`);
+        process.exit(1);
+    }
+}
+
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ],
+    partials: [Partials.Channel]
+});
+
+const spam = new Map();
+const joins = new Map();
+
+// Inicia o painel imediatamente, sem esperar o Discord.
+startDashboard(client);
+
+client.once('ready', () => {
+    console.log(`${client.user.tag} online.`);
+});
+
+client.on('interactionCreate', async i => {
+    try {
+        await handle(client, i);
+    } catch (e) {
+        console.error('Interaction:', e);
+
+        const p = {
+            content: 'Erro ao executar. Confira permissões e logs.',
+            ephemeral: true
+        };
+
+        if (i.replied || i.deferred) {
+            await i.followUp(p).catch(() => {});
+        } else {
+            await i.reply(p).catch(() => {});
+        }
+    }
+});
+
+client.on('guildMemberAdd', async m => {
+    const s = db.prepare(
+        'SELECT welcome_channel_id FROM guild_settings WHERE guild_id=?'
+    ).get(m.guild.id);
+
+    m.guild.channels.cache
+        .get(s?.welcome_channel_id)
+        ?.send(`👋 Bem-vindo(a), ${m}! Você é o membro ${m.guild.memberCount}.`)
+        .catch(() => {});
+
+    const a = db.prepare(
+        'SELECT role_id FROM autoroles WHERE guild_id=?'
+    ).get(m.guild.id);
+
+    if (a?.role_id) {
+        await m.roles.add(a.role_id).catch(() => {});
+    }
+
+    const now = Date.now();
+
+    const list = (joins.get(m.guild.id) || [])
+        .filter(t => now - t < 15000);
+
+    list.push(now);
+    joins.set(m.guild.id, list);
+
+    if (list.length >= 8) {
+        console.warn(
+            `[ANTI-RAID] Entrada acelerada detectada em ${m.guild.name}.`
+        );
+    }
+});
+
+client.on('messageCreate', m => {
+    if (!m.guild || m.author.bot) return;
+
+    ensureUser.run(m.guild.id, m.author.id);
+
+    const key = m.guild.id + ':' + m.author.id;
+    const now = Date.now();
+
+    const a = (spam.get(key) || [])
+        .filter(t => now - t < 7000);
+
+    a.push(now);
+    spam.set(key, a);
+
+    if (a.length >= 6) {
+        const s = db.prepare(
+            'SELECT anti_spam FROM guild_settings WHERE guild_id=?'
+        ).get(m.guild.id);
+
+        if (s?.anti_spam !== 0 && m.member?.moderatable) {
+            m.member.timeout(
+                60000,
+                'Anti-spam: excesso de mensagens'
+            ).catch(() => {});
+
+            m.channel.send(
+                `${m.author}, reduza a frequência de mensagens.`
+            ).catch(() => {});
+        }
+
+        spam.set(key, []);
+        return;
+    }
+
+    const r = db.prepare(
+        'SELECT xp,level FROM users WHERE guild_id=? AND user_id=?'
+    ).get(m.guild.id, m.author.id);
+
+    const xp = r.xp + Math.floor(Math.random() * 6) + 5;
+    const level = Math.floor(Math.sqrt(xp / 100));
+
+    db.prepare(
+        'UPDATE users SET xp=?,level=? WHERE guild_id=? AND user_id=?'
+    ).run(xp, level, m.guild.id, m.author.id);
+
+    if (level > r.level) {
+        m.channel.send(
+            `🎉 ${m.author}, você alcançou o nível ${level}!`
+        ).catch(() => {});
+    }
+});
+
+client.login(process.env.DISCORD_TOKEN).catch(error => {
+    console.error('Erro ao conectar o bot ao Discord:', error);
+    process.exit(1);
+});
