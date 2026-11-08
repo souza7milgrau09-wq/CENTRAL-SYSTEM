@@ -47,8 +47,11 @@ try {
 }
 
 // Evento de conexão do Discord
-client.once('clientReady', () => {
-    console.log(`[CENTRAL] ${client.user.tag} online.`);
+client.once('ready', () => {
+    console.log('================================');
+    console.log(`[CENTRAL] ${client.user.tag} ONLINE!`);
+    console.log(`[CENTRAL] Servidores: ${client.guilds.cache.size}`);
+    console.log('================================');
 });
 
 // Interações dos comandos
@@ -176,10 +179,14 @@ client.on('messageCreate', message => {
 // Conecta o bot ao Discord
 console.log('[CENTRAL] Conectando ao Discord...');
 
-client.login(process.env.DISCORD_TOKEN).catch(error => {
-    console.error('[ERRO] Falha ao conectar ao Discord:', error);
-    process.exit(1);
-});
+client.login(process.env.DISCORD_TOKEN)
+    .then(() => {
+        console.log('[CENTRAL] Login solicitado com sucesso!');
+    })
+    .catch(error => {
+        console.error('[ERRO] Falha ao conectar ao Discord:', error);
+        process.exit(1);
+    });
 
 // Captura erros inesperados
 process.on('unhandledRejection', error => {
