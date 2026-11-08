@@ -256,7 +256,19 @@ client.on('messageCreate', message => {
 // ==========================================
 
 console.log('[CENTRAL] Chamando conexão com Discord...');
+console.log('[TESTE] Verificando acesso ao Discord...');
 
+fetch('https://discord.com/api/v10/gateway', {
+    signal: AbortSignal.timeout(15000)
+})
+    .then(async response => {
+        console.log('[TESTE HTTP] Status:', response.status);
+        console.log('[TESTE HTTP] Resposta:', await response.text());
+    })
+    .catch(error => {
+        console.error('[TESTE HTTP] Falha:', error.message);
+    });
+    
 client.login(process.env.DISCORD_TOKEN)
     .then(() => {
         console.log('[CENTRAL] Login solicitado com sucesso!');
