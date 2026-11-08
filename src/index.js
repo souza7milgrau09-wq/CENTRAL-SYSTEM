@@ -11,7 +11,10 @@ const { handle } = require('./commands');
 const { db, ensureUser } = require('./database');
 const { startDashboard } = require('./dashboard');
 
-// Verifica as variáveis obrigatórias
+// ==========================================
+// VERIFICAÇÃO DAS VARIÁVEIS
+// ==========================================
+
 for (const k of ['DISCORD_TOKEN', 'CLIENT_ID', 'SESSION_SECRET']) {
     if (!process.env[k]) {
         console.error(`[ERRO] Falta a variável ${k}`);
@@ -21,7 +24,10 @@ for (const k of ['DISCORD_TOKEN', 'CLIENT_ID', 'SESSION_SECRET']) {
 
 console.log('[CENTRAL] Iniciando aplicação...');
 
-// Cria o cliente Discord
+// ==========================================
+// CLIENTE DISCORD
+// ==========================================
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -29,32 +35,88 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent
     ],
-    partials: [Partials.Channel]
+    partials: [
+        Partials.Channel
+    ]
 });
 
 const spam = new Map();
 const joins = new Map();
 
-// Inicia o dashboard antes da conexão com Discord
+// ==========================================
+// DIAGNÓSTICO DO DISCORD
+// ==========================================
+
+client.on('debug', message => {
+    console.log('[DEBUG DISCORD]', message);
+});
+
+client.on('warn', message => {
+    console.warn('[AVISO DISCORD]', message);
+});
+
+client.on('error', error => {
+    console.error('[ERRO DISCORD]', error);
+});
+
+client.on('shardError', error => {
+    console.error('[ERRO SHARD]', error);
+});
+
+client.on('shardDisconnect', (event, id) => {
+    console.error(
+        '[DISCONNECT]',
+        'Shard:', id,
+        'Código:', event.code,
+        'Motivo:', event.reason
+    );
+});
+
+client.on('shardReconnecting', id => {
+    console.log('[RECONNECT] Shard:', id);
+});
+
+client.on('shardResume', (id, replayedEvents) => {
+    console.log(
+        '[RESUME] Shard:',
+        id,
+        'Eventos recuperados:',
+        replayedEvents
+    );
+});
+
+// ==========================================
+// DASHBOARD
+// ==========================================
+
 console.log('[TESTE] Iniciando dashboard...');
 
 try {
     startDashboard(client);
-    console.log('[TESTE] Dashboard iniciado.');
+    console.log('[TESTE] Dashboard iniciado com sucesso.');
 } catch (error) {
     console.error('[ERRO] Falha ao iniciar dashboard:', error);
     process.exit(1);
 }
 
-// Evento de conexão do Discord
+// ==========================================
+// BOT ONLINE
+// ==========================================
+
 client.once('ready', () => {
-    console.log('================================');
+    console.log('');
+    console.log('========================================');
     console.log(`[CENTRAL] ${client.user.tag} ONLINE!`);
+    console.log(`[CENTRAL] ID: ${client.user.id}`);
     console.log(`[CENTRAL] Servidores: ${client.guilds.cache.size}`);
-    console.log('================================');
+    console.log('========================================');
+    console.log('');
 });
 
-// Interações dos comandos
+// ==========================================
+// INTERAÇÕES
+// ==========================================
+
 client.on('interactionCreate', async interaction => {
     try {
         await handle(client, interaction);
@@ -74,7 +136,10 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// Entrada de membros
+// ==========================================
+// ENTRADA DE MEMBROS
+// ==========================================
+
 client.on('guildMemberAdd', async member => {
     try {
         const settings = db.prepare(
@@ -112,12 +177,16 @@ client.on('guildMemberAdd', async member => {
                 `[ANTI-RAID] Entrada acelerada detectada em ${member.guild.name}.`
             );
         }
+
     } catch (error) {
         console.error('[ERRO] GuildMemberAdd:', error);
     }
 });
 
-// XP e proteção básica contra spam
+// ==========================================
+// XP E ANTI-SPAM
+// ==========================================
+
 client.on('messageCreate', message => {
     try {
         if (!message.guild || message.author.bot) return;
@@ -164,31 +233,42 @@ client.on('messageCreate', message => {
 
         db.prepare(
             'UPDATE users SET xp=?, level=? WHERE guild_id=? AND user_id=?'
-        ).run(xp, level, message.guild.id, message.author.id);
+        ).run(
+            xp,
+            level,
+            message.guild.id,
+            message.author.id
+        );
 
         if (level > user.level) {
             message.channel.send(
                 `🎉 ${message.author}, você alcançou o nível ${level}!`
             ).catch(() => {});
         }
+
     } catch (error) {
         console.error('[ERRO] MessageCreate:', error);
     }
 });
 
-// Conecta o bot ao Discord
-console.log('[CENTRAL] Conectando ao Discord...');
+// ==========================================
+// CONEXÃO COM DISCORD
+// ==========================================
+
+console.log('[CENTRAL] Chamando conexão com Discord...');
 
 client.login(process.env.DISCORD_TOKEN)
     .then(() => {
         console.log('[CENTRAL] Login solicitado com sucesso!');
     })
     .catch(error => {
-        console.error('[ERRO] Falha ao conectar ao Discord:', error);
-        process.exit(1);
+        console.error('[LOGIN ERRO]', error);
     });
 
-// Captura erros inesperados
+// ==========================================
+// ERROS GERAIS
+// ==========================================
+
 process.on('unhandledRejection', error => {
     console.error('[ERRO] Promise rejeitada:', error);
 });
